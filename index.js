@@ -20,15 +20,24 @@ const parseFileOption = option => {
   const file = typeof option === 'string' ? option : option.file;
   const mimeType = typeof option !== 'string' ? option.type : null;
   const path = (typeof option !== 'string' && option.path) || 'version';
-  return { file, mimeType, path };
+  const versionPattern = (typeof option !== 'string' && option.versionPattern) || undefined;
+  return { file, mimeType, path, versionPattern };
 };
 
 const getFileType = (file, mimeType) => {
   const ext = file.split('.').pop();
-  if (['application/json'].includes(mimeType) || ext === 'json') return 'json';
-  if (['text/yaml', 'application/x-yaml'].includes(mimeType) || ['yml', 'yaml'].includes(ext)) return 'yaml';
-  if (['application/toml', 'text/toml'].includes(mimeType) || ext === 'toml') return 'toml';
-  if (['text/x-properties'].includes(mimeType) || ext === 'ini') return 'ini';
+  if (['application/json'].includes(mimeType) || ext === 'json') {
+    return 'json';
+  }
+  if (['text/yaml', 'application/x-yaml'].includes(mimeType) || ['yml', 'yaml'].includes(ext)) {
+    return 'yaml';
+  }
+  if (['application/toml', 'text/toml'].includes(mimeType) || ext === 'toml') {
+    return 'toml';
+  }
+  if (['text/x-properties'].includes(mimeType) || ext === 'ini') {
+    return 'ini';
+  }
   return 'text';
 };
 
@@ -50,7 +59,9 @@ const parse = async (data, type) => {
 class Bumper extends Plugin {
   async getLatestVersion() {
     const { in: option } = this.options;
-    if (!option) return;
+    if (!option) {
+      return;
+    }
     const { file, mimeType, path } = parseFileOption(option);
     if (file) {
       const type = getFileType(file, mimeType);
@@ -62,11 +73,13 @@ class Bumper extends Plugin {
     return null;
   }
 
-  async bump(version) {
+  async bump(fullVersion) {
     const { out } = this.options;
     const { isDryRun } = this.config;
     const { latestVersion } = this.config.getContext();
-    if (!out) return;
+    if (!out) {
+      return;
+    }
 
     const expandedOptions = castArray(out).map(options => (typeof options === 'string' ? { file: options } : options));
 
@@ -75,14 +88,21 @@ class Bumper extends Plugin {
       if (glob.isDynamicPattern(option.file)) {
         const files = await glob(option.file, { onlyFiles: true, unique: true });
         options.push(...files.map(file => Object.assign({}, option, { file })));
-      } else options.push(option);
+      } else {
+        options.push(option);
+      }
     }
 
     return Promise.all(
       options.map(async out => {
-        const { file, mimeType, path } = parseFileOption(out);
+        const { file, mimeType, path, versionPattern } = parseFileOption(out);
+        const version = versionPattern ? fullVersion.match(new RegExp(versionPattern), 'g')[0] : fullVersion;
+
         this.log.exec(`Writing version to ${file}`, isDryRun);
-        if (isDryRun) return noop;
+
+        if (isDryRun) {
+          return noop;
+        }
 
         const type = getFileType(file, mimeType);
         const data = await readFile(file, 'utf8').catch(() => (type === 'text' ? latestVersion : '{}'));
